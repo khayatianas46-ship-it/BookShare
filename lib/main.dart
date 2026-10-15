@@ -1,6 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firebase_options.dart';
 
-void main() => runApp(const BookShareApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  runApp(const BookShareApp());
+}
 
 const Color green = Color(0xFF386641);
 const Color cream = Color(0xFFFFFBF4);
@@ -261,23 +273,63 @@ class _CataloguePageState extends State<CataloguePage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 25),
       children: [
-        Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [green, Color(0xFF63966A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(25),
+        
+Container(
+  padding: const EdgeInsets.all(22),
+  decoration: const BoxDecoration(
+    gradient: LinearGradient(
+      colors: [green, Color(0xFF63966A)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    ),
+    borderRadius: BorderRadius.all(
+      Radius.circular(25),
+    ),
+  ),
+  child: const Stack(
+    children: [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'SALUT, LECTEUR ! 👋',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              letterSpacing: 1.5,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          child: Stack(children: [
-            const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('SALUT, LECTEUR ! 👋', style: TextStyle(color: Colors.white70, fontSize: 11, letterSpacing: 1.5, fontWeight: FontWeight.bold)),
-              SizedBox(height: 12),
-              Text('Une nouvelle\nhistoire t’attend.', style: TextStyle(color: Colors.white, fontSize: 26, height: 1.2, fontWeight: FontWeight.bold)),
-              SizedBox(height: 12),
-              Text('Trouve ton prochain livre préféré.', style: TextStyle(color: Colors.white)),
-            ]),
-            const Positioned(right: 0, bottom: 0, child: Icon(Icons.auto_stories_rounded, size: 70, color: Color(0x66FFFFFF))),
-          ]),
+          SizedBox(height: 12),
+          Text(
+            'Une nouvelle\nhistoire t’attend.',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              height: 1.2,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Trouve ton prochain livre préféré.',
+            style: TextStyle(color: Colors.white),
+          ),
+        ],
+      ),
+      Positioned(
+        right: 0,
+        bottom: 0,
+        child: Icon(
+          Icons.auto_stories_rounded,
+          size: 70,
+          color: Color(0x66FFFFFF),
         ),
+      ),
+    ],
+  ),
+),
+
         const SizedBox(height: 24),
         TextField(
           onChanged: (value) => setState(() => search = value),
@@ -446,16 +498,65 @@ class BookCard extends StatelessWidget {
                   onPressed: () => Navigator.pop(dialogContext),
                   child: const Text('Fermer', style: TextStyle(color: green)),
                 ),
-                FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: green),
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('La réservation sera activée avec le backend.')),
-                    );
-                  },
-                  child: const Text('Réserver'),
-                ),
+                
+FilledButton(
+  style: FilledButton.styleFrom(backgroundColor: green),
+  onPressed: () async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      Navigator.pop(dialogContext);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Connecte-toi dans Mon profil pour réserver un livre.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('reservations')
+          .add({
+        'userId': user.uid,
+        'bookTitle': book.title,
+        'author': book.author,
+        'category': book.category,
+        'status': 'en_attente',
+        'requestedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!context.mounted) return;
+
+      Navigator.pop(dialogContext);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ta demande de réservation a été enregistrée !',
+          ),
+        ),
+      );
+    } on FirebaseException catch (e) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.code == 'permission-denied'
+                ? 'Accès refusé : vérifie les règles Firestore.'
+                : 'Impossible de réserver : ${e.message ?? e.code}',
+          ),
+        ),
+      );
+    }
+  },
+  child: const Text('Réserver'),
+),
+
               ],
             ),
           ),
@@ -503,36 +604,195 @@ class BookCard extends StatelessWidget {
 }
 
 // -------------------- EMPRUNTS --------------------
+
 class LoansPage extends StatelessWidget {
   const LoansPage({super.key});
 
   @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Text('Mes lectures 📚', style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text('Retrouve tes emprunts et tes dates de retour.', style: TextStyle(color: Colors.black54)),
-          const SizedBox(height: 23),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: const Color(0xFFE4EFDE), borderRadius: BorderRadius.circular(23)),
-            child: const Row(children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('EN COURS', style: TextStyle(color: green)),
-                SizedBox(height: 8),
-                Text('0 livre emprunté', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: green)),
-              ])),
-              Icon(Icons.auto_stories_rounded, size: 50, color: green),
-            ]),
-          ),
-          const SizedBox(height: 25),
-          const Text('Mes livres empruntés', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 15),
-          const EmptyState(icon: Icons.menu_book_rounded, title: 'Aucune lecture en cours', message: 'Quand tu emprunteras un livre, tu retrouveras ici son statut et sa date de retour.', color: purple),
-        ],
-      );
+  @override
+Widget build(BuildContext context) {
+  final user = FirebaseAuth.instance.currentUser;
+
+  debugPrint('Utilisateur Firebase : ${user?.uid}');
+  debugPrint('Email Firebase : ${user?.email}');
+
+  if (user == null) {
+    return const Center(
+      child: EmptyState(
+        icon: Icons.person_outline_rounded,
+        title: 'Connexion nécessaire',
+        message: 'Connecte-toi pour consulter tes réservations.',
+        color: purple,
+      ),
+    );
+  }
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('reservations')
+          .where('userId', isEqualTo: user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Impossible de charger tes réservations. '
+                'Vérifie les règles Firestore.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: green),
+          );
+        }
+
+        final reservations = snapshot.data?.docs ?? [];
+
+        if (reservations.isEmpty) {
+          return const Center(
+            child: EmptyState(
+              icon: Icons.menu_book_rounded,
+              title: 'Aucune réservation',
+              message:
+                  'Lorsque tu réserveras un livre, il apparaîtra ici.',
+              color: purple,
+            ),
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Text(
+              'Mes réservations',
+              style: TextStyle(
+                fontSize: 25,
+                fontWeight: FontWeight.bold,
+                color: green,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${reservations.length} réservation(s)',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 18),
+            ...reservations.map((reservation) {
+              final data = reservation.data();
+              final title =
+                  data['bookTitle']?.toString() ?? 'Livre inconnu';
+              final author =
+                  data['author']?.toString() ?? 'Auteur inconnu';
+              final status =
+                  data['status']?.toString() ?? 'en_attente';
+
+              final normalizedStatus = status.toLowerCase();
+
+              final Color statusColor;
+              final String statusLabel;
+              final IconData statusIcon;
+
+              if (normalizedStatus == 'acceptee' ||
+                  normalizedStatus == 'acceptée' ||
+                  normalizedStatus == 'acceptee') {
+                statusColor = green;
+                statusLabel = 'Acceptée';
+                statusIcon = Icons.check_circle_rounded;
+              } else if (normalizedStatus == 'refusee' ||
+                  normalizedStatus == 'refusée' ||
+                  normalizedStatus == 'refusée') {
+                statusColor = Colors.red;
+                statusLabel = 'Refusée';
+                statusIcon = Icons.cancel_rounded;
+              } else {
+                statusColor = Colors.orange;
+                statusLabel = 'En attente';
+                statusIcon = Icons.hourglass_top_rounded;
+              }
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFECECE7)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 55,
+                      height: 65,
+                      decoration: BoxDecoration(
+                        color: purple.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.menu_book_rounded,
+                        color: purple,
+                        size: 30,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: green,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            author,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Icon(
+                                statusIcon,
+                                size: 16,
+                                color: statusColor,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                statusLabel,
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
 }
+
 
 // -------------------- EVENEMENTS --------------------
 class EventsPage extends StatelessWidget {
@@ -641,11 +901,28 @@ class _ProfilePageState extends State<ProfilePage> {
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
 
-  bool isLoggedIn = false;
-  bool showLogin = false;
-  bool hidePassword = true;
-  String memberName = '';
-  String memberEmail = '';
+ bool isLoggedIn = false;
+bool showLogin = false;
+bool hidePassword = true;
+bool isLoading = false;
+
+String memberName = '';
+String memberEmail = '';
+
+@override
+void initState() {
+  super.initState();
+
+  final user = FirebaseAuth.instance.currentUser;
+
+  if (user != null) {
+    isLoggedIn = true;
+    memberName =
+        user.displayName ?? user.email?.split('@').first ?? 'Membre';
+    memberEmail = user.email ?? '';
+  }
+}
+
 
   @override
   void dispose() {
@@ -656,15 +933,162 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
-  void submitForm() {
-    if (!_formKey.currentState!.validate()) return;
+  
+Future<void> submitForm() async {
+  if (!_formKey.currentState!.validate() || isLoading) return;
+
+  setState(() => isLoading = true);
+
+  final email = _emailController.text.trim();
+  final password = _passwordController.text;
+  final isLogin = showLogin;
+
+  try {
+    late UserCredential credential;
+    late String name;
+
+   
+if (isLogin) {
+  // Connexion
+  credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+    email: email,
+    password: password,
+  );
+
+  debugPrint(
+  'Connexion Firebase réussie : ${credential.user?.uid}',
+);
+
+await Future<void>.delayed(const Duration(seconds: 2));
+
+debugPrint(
+  'Session Firebase après 2 secondes : '
+  '${FirebaseAuth.instance.currentUser?.uid}',
+);
+  final user = credential.user!;
+  name = user.displayName ?? email.split('@').first;
+
+  // Récupération du nom enregistré dans Firestore
+  try {
+    final profile = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+
+    final savedName = profile.data()?['name'];
+    if (savedName is String && savedName.isNotEmpty) {
+      name = savedName;
+    }
+  } catch (_) {
+    // La connexion reste possible si le profil Firestore
+    // n'est pas accessible.
+  }
+} else {
+
+      // Création du compte
+      name = _nameController.text.trim();
+
+      credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final user = credential.user!;
+
+      await user.updateDisplayName(name);
+
+      // Le compte reste connecté même si l'enregistrement
+      // complémentaire dans Firestore échoue.
+      if (mounted) {
+        setState(() {
+          isLoggedIn = true;
+          memberName = name;
+          memberEmail = email;
+        });
+      }
+
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .set({
+          'uid': user.uid,
+          'name': name,
+          'email': email,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('Erreur enregistrement profil Firestore : $e');
+      }
+    }
+
+    if (!mounted) return;
+
     setState(() {
       isLoggedIn = true;
-      memberName = showLogin ? _emailController.text.trim().split('@').first : _nameController.text.trim();
-      memberEmail = _emailController.text.trim();
+      memberName = name;
+      memberEmail = email;
     });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mode démonstration : Firebase sera nécessaire pour les vrais comptes.')));
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isLogin
+              ? 'Connexion réussie !'
+              : 'Compte créé avec succès !',
+        ),
+      ),
+    );
+  } on FirebaseAuthException catch (e) {
+    String message;
+
+    switch (e.code) {
+      case 'email-already-in-use':
+        message = 'Cette adresse e-mail possède déjà un compte.';
+        break;
+      case 'invalid-email':
+        message = 'Adresse e-mail invalide.';
+        break;
+      case 'weak-password':
+        message = 'Le mot de passe doit contenir au moins 6 caractères.';
+        break;
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        message = 'E-mail ou mot de passe incorrect.';
+        break;
+      case 'too-many-requests':
+        message = 'Trop de tentatives. Réessaie plus tard.';
+        break;
+      case 'network-request-failed':
+        message = 'Vérifie ta connexion Internet.';
+        break;
+      case 'operation-not-allowed':
+        message = 'Active Email/Password dans Firebase Authentication.';
+        break;
+      default:
+        message = 'Erreur Firebase : ${e.message ?? e.code}';
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Une erreur est survenue : $e')),
+      );
+    }
+  } finally {
+    if (mounted) {
+      setState(() => isLoading = false);
+    }
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -841,3 +1265,4 @@ class EmptyState extends StatelessWidget {
         ]),
       );
 }
+
